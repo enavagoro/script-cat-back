@@ -2,6 +2,8 @@ const fs = require('fs');
 var express = require('express');
 var app = express();
 const bodyParser = require('body-parser');
+var path = require('path');
+const archiver = require('archiver');
 
 app.use(function (req, res, next) {
     res.header('Access-Control-Allow-Origin', '*');
@@ -18,10 +20,31 @@ app.use(function (req, res, next) {
 
 app.use(bodyParser.json());
 
+app.use(express.static('file-folder'));
+
+/*
+app.get('/file', (req, res) => {
+    res.json({"message": "Api de archivos"});
+});
+*/
+
 app.post('/body',(req, res) => {
-  console.log('res',req.body.htmlBody);
-   createHtml(req.body.htmlBody[0]);
-   createCss(req.body.htmlBody[1],req.body.htmlBody[2]);
+  post(req);
+  res.json({res:'bien'});
+});
+
+async function post(req){
+  console.log('create html');
+   await createHtml(req.body.htmlBody[0]);
+   console.log('create css');
+   await createCss(req.body.htmlBody[1],req.body.htmlBody[2]);
+   console.log('create zip');
+   createZip();
+
+}
+
+app.get('/file-folder', (req, res) => {
+  res.sendFile('file-folder.zip', { root: path.join(__dirname, './') });
 });
 
 function createHtml(bodyContent){
@@ -92,9 +115,11 @@ function createHtml(bodyContent){
 
   var htmlContent = head + bodyTop + bodyContent + bodyBottom + script;
 
-  fs.writeFile('./file-folder/index.html', htmlContent, (err) => {
-    if (err) throw err;
-    console.log('The file (index.html) has been saved!');
+  return new Promise((resolve, reject) => {
+    fs.writeFile('./file-folder/index.html', htmlContent, (err) => {
+      if (err) reject(err);
+        console.log('html resolve'); resolve(true);
+    });
   });
 }
 
@@ -217,10 +242,34 @@ function createCss(images,phoneContent){
 
   var styles = desktop + images + phoneStart + phoneContent + phoneEnd;
 
-  fs.writeFile('./file-folder/styles.css', styles, (err) => {
-    if (err) throw err;
-    console.log('The file (styles.css) has been saved!');
+  return new Promise((resolve, reject) => {
+    fs.writeFile('./file-folder/styles.css', styles, (err) => {
+      if (err) reject(err);
+        console.log('css resolve'); resolve(true);
+    });
   });
+}
+
+function createZip(){
+  const output = fs.createWriteStream(__dirname + '/file-folder.zip');
+
+  const archive = archiver('zip', {
+    zlib: { level: 9 } // Sets the compression level.
+  });
+
+  output.on('close', function() {
+    console.log(archive.pointer() + ' total bytes');
+    console.log('archiver has been finalized and the output file descriptor has closed.');
+  });
+
+  const html = __dirname + '/file-folder/index.html';
+  archive.append(fs.createReadStream(html), { name: 'index.html' });
+
+  const css = __dirname + '/file-folder/styles.css';
+  archive.append(fs.createReadStream(css), { name: 'styles.css' });
+
+  archive.pipe(output);
+  archive.finalize();
 }
 
 app.listen(4500, function () {
